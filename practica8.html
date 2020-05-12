@@ -298,506 +298,506 @@
         }
     </style>
 
-    <!-- Custom script -->
-    <script>
-        'use strict';
+   <!-- Custom script -->
+   <script>
+    'use strict';
 
-        const BASE_API_URL = 'https://corona.lmao.ninja';
-        let objInfoWindows = {};
-        let markers = {};
+    const BASE_API_URL = 'https://corona.lmao.ninja';
+    let objInfoWindows = {};
+    let markers = {};
 
-        async function initMap() {
-            const props = {
-                center: {
-                    lat: 15,
-                    lng: 0
-                },
-                zoom: 2
-            };
-            const map = new google.maps.Map(document.getElementById('map'), props);
-            let globalData = null;
-            let countriesData = null;
-            let countryNamesES = null;
+    async function initMap() {
+        const props = {
+            center: {
+                lat: 15,
+                lng: 0
+            },
+            zoom: 2
+        };
+        const map = new google.maps.Map(document.getElementById('map'), props);
+        let globalData = null;
+        let countriesData = null;
+        let countryNamesES = null;
 
-            await showModal('#modalLoading');
-            try {
-                const globalRes = await fetch(`${BASE_API_URL}/all`);
-                globalData = await globalRes.json();
-                cacheAPIData('globalData', globalData);
+        await showModal('#modalLoading');
+        try {
+            const globalRes = await fetch(`${BASE_API_URL}/all`);
+            globalData = await globalRes.json();
+            cacheAPIData('globalData', globalData);
 
-                const countriesRes = await fetch(`${BASE_API_URL}/countries?sort=cases`);
-                countriesData = await countriesRes.json();
-                cacheAPIData('countryData', countriesData);
+            const countriesRes = await fetch(`${BASE_API_URL}/countries?sort=cases`);
+            countriesData = await countriesRes.json();
+            cacheAPIData('countryData', countriesData);
 
-                const countryNamesESRes = await fetch('https://raw.githubusercontent.com/umpirsky/country-list/master/data/es_MX/country.json');
-                countryNamesES = await countryNamesESRes.json();
-            }
-            catch (error) {
-                globalData = retrieveCachedAPIData('globalData');
-                countriesData = retrieveCachedAPIData('countryData');
-                await hideModal('#modalLoading');
-                if (!globalData || !countriesData) {
-                    await showModal('#modalError');
-                }
-            }
-
-            updateInfoCards(globalData, countriesData, countryNamesES);
-            addCountryMarkers(countriesData, countryNamesES, map);
-
+            const countryNamesESRes = await fetch('https://raw.githubusercontent.com/umpirsky/country-list/master/data/es_MX/country.json');
+            countryNamesES = await countryNamesESRes.json();
+        }
+        catch (error) {
+            globalData = retrieveCachedAPIData('globalData');
+            countriesData = retrieveCachedAPIData('countryData');
             await hideModal('#modalLoading');
-        }
-
-        function generateCountryInfoHTML(country, countryES) {
-            return `
-        <div class="googleMapMarker">
-            <div style="display:flex; flex-direction: column; align-items: center; padding-bottom: 1em;">
-                <img src="${country.countryInfo.flag}" alt="Bandera de ${countryES[country.countryInfo.iso2] || country.country}" style="width: 60%;">
-            </div>
-            <div style="display:flex; flex-direction: column; align-items: center;">
-                <div>
-                    <b>Casos: </b>${country.cases.toLocaleString('en')}<br>
-                </div>
-                <div>
-                    <b>Muertes: </b>${country.deaths.toLocaleString('en')}<br>
-                </div>
-                <div>
-                    <b>Recuperados: </b>${country.recovered.toLocaleString('en')}<br>
-                </div>
-            </div>
-        </div>
-    `;
-        }
-
-        function generateFullCountryInfoHTML(country, countryES) {
-            return `
-        <div class="googleMapRightControl">
-            <div style="display:flex; flex-direction: column; align-items: center; padding-bottom: 1em;">
-                <img src="${country.countryInfo.flag}" alt="Bandera de ${countryES[country.countryInfo.iso2] || country.country}" style="width: 60%;">
-                <h5 style="margin: 3px 0 0 0;">${countryES[country.countryInfo.iso2] || country.country}</h5>
-            </div>
-            <div style="display:flex; justify-content: center;">
-                <table>
-                    <tr>
-                        <td><b>Casos</b></td>
-                        <td>${country.cases.toLocaleString('en')}</td>
-                    </tr>
-                    <tr>
-                        <td><b>Nuevos hoy</b></td>
-                        <td>${country.todayCases.toLocaleString('en')}</td>
-                    </tr>
-                    <tr>
-                        <td><b>Muertes</b></td>
-                        <td>${country.deaths.toLocaleString('en')}</td>
-                    </tr>
-                    <tr>
-                        <td><b>Muertes hoy</b></td>
-                        <td>${country.todayDeaths.toLocaleString('en')}</td>
-                    </tr>
-                    <tr>
-                        <td><b>Recuperados</b></td>
-                        <td>${country.recovered.toLocaleString('en')}</td>
-                    </tr>
-                    <tr>
-                        <td><b>Activos</b></td>
-                        <td>${country.active.toLocaleString('en')}</td>
-                    </tr>
-                    <tr>
-                        <td><b>Críticos</b></td>
-                        <td>${country.critical.toLocaleString('en')}</td>
-                    </tr>
-                    <tr>
-                        <td><b>Casos/millón</b></td>
-                        <td>${country.casesPerOneMillion.toLocaleString('en')}</td>
-                    </tr>
-                </table>
-            </div>
-        </div>
-    `;
-        }
-
-        function makeControl(controlDiv, country, countryES) {
-            // Set up the control border.
-            var controlUI = document.createElement('div');
-            controlUI.title = countryES[country.countryInfo.iso2] || country.country;
-            controlUI.className = 'controlUI';
-            controlDiv.appendChild(controlUI);
-
-            // Set up the inner control.
-            var controlText = document.createElement('div');
-            controlText.innerHTML = generateFullCountryInfoHTML(country, countryES);
-            controlText.className = 'controlText';
-            controlUI.appendChild(controlText);
-        }
-
-        function updateInfoCards(globalData, countriesData, countryNamesES) {
-            const tblCountryCases = document.getElementById('countryCasesTable');
-            const divLastUpdated = document.getElementById('lastUpdated');
-            const divGlobalConfirmedCases = document.getElementById('globalConfirmedCases');
-            const divGlobalActiveCases = document.getElementById('globalActiveCases');
-            const divGlobalRecovered = document.getElementById('globalRecovered');
-            const divGlobalDeaths = document.getElementById('globalDeaths');
-
-            countriesData.forEach((country, i) => {
-                const tdPosicion = document.createElement('td');
-                const tdPais = document.createElement('td');
-                const tdCasos = document.createElement('td');
-
-                tdPosicion.textContent = i + 1;
-                tdPais.textContent = countryNamesES[country.countryInfo.iso2] || country.country;
-
-                const spanCasos = document.createElement('span');
-                spanCasos.textContent = country.cases.toLocaleString('en');
-                spanCasos.className = 'badge badge-pill badge-warning';
-
-                tdCasos.appendChild(spanCasos);
-
-                const tr = document.createElement('tr');
-                tr.id = country.country;
-                tr.appendChild(tdPosicion);
-                tr.appendChild(tdPais);
-                tr.appendChild(tdCasos);
-
-                tr.addEventListener('click', evt => {
-                    const country = evt.currentTarget.id;
-                    closeAllInfoWindows();
-                    google.maps.event.trigger(markers[country], 'click');
-                });
-
-                tblCountryCases.appendChild(tr);
-            });
-
-            divLastUpdated.textContent = new Date(globalData.updated).toLocaleString('es-us', { hour12: true });
-            divGlobalConfirmedCases.textContent = globalData.cases.toLocaleString('en');
-            divGlobalActiveCases.textContent = globalData.active.toLocaleString('en');
-            divGlobalRecovered.textContent = globalData.recovered.toLocaleString('en');
-            divGlobalDeaths.textContent = globalData.deaths.toLocaleString('en');
-        }
-
-        function addCountryMarkers(countriesData, countryNamesES, map) {
-            const icon = {
-                url: 'https://image.flaticon.com/icons/png/128/2659/2659980.png',
-                scaledSize: new google.maps.Size(24, 24),
-                origin: new google.maps.Point(0, 0)
-            };
-
-            for (const country of countriesData) {
-                const info = generateCountryInfoHTML(country, countryNamesES);
-                const infoWindow = new google.maps.InfoWindow({
-                    content: info
-                });
-
-                const marker = new google.maps.Marker({
-                    map: map,
-                    icon: icon,
-                    position: new google.maps.LatLng(country.countryInfo.lat, country.countryInfo.long),
-                    title: `${countryNamesES[country.countryInfo.iso2] || country.country}`
-                });
-
-                markers[country.country] = marker;
-                marker.addListener('click', () => {
-                    closeAllInfoWindows();
-                    infoWindow.open(map, marker);
-                    var divName = document.createElement('div');
-                    new makeControl(divName, country, countryNamesES);
-
-                    let fullInfoWindow = setInterval(() => {
-                        if (!infoWindow.getMap()) {
-                            clearInterval(fullInfoWindow);
-                            map.controls[google.maps.ControlPosition.RIGHT_CENTER].pop();
-                        }
-                        else if (map.controls[google.maps.ControlPosition.RIGHT_CENTER].length === 0) {
-                            map.controls[google.maps.ControlPosition.RIGHT_CENTER].push(divName);
-                        }
-                    }, 100);
-                });
-
-                objInfoWindows[country.country] = infoWindow;
+            if (!globalData || !countriesData) {
+                await showModal('#modalError');
             }
         }
 
-        function cacheAPIData(key, jsonData) {
-            localStorage.setItem(key, JSON.stringify(jsonData));
-        }
+        updateInfoCards(globalData, countriesData, countryNamesES);
+        addCountryMarkers(countriesData, countryNamesES, map);
 
-        function retrieveCachedAPIData(key) {
-            return JSON.parse(localStorage.getItem(key));
-        }
+        await hideModal('#modalLoading');
+    }
 
-        function closeAllInfoWindows() {
-            for (const infoWinKey in objInfoWindows) {
-                objInfoWindows[infoWinKey].close();
-            }
-        }
+    function generateCountryInfoHTML(country, countryES) {
+        return `
+    <div class="googleMapMarker">
+        <div style="display:flex; flex-direction: column; align-items: center; padding-bottom: 1em;">
+            <img src="${country.countryInfo.flag}" alt="Bandera de ${countryES[country.countryInfo.iso2] || country.country}" style="width: 60%;">
+        </div>
+        <div style="display:flex; flex-direction: column; align-items: center;">
+            <div>
+                <b>Casos: </b>${country.cases.toLocaleString('en')}<br>
+            </div>
+            <div>
+                <b>Muertes: </b>${country.deaths.toLocaleString('en')}<br>
+            </div>
+            <div>
+                <b>Recuperados: </b>${country.recovered.toLocaleString('en')}<br>
+            </div>
+        </div>
+    </div>
+`;
+    }
 
-        async function showModal(modalId) {
-            $(modalId).modal({ backdrop: 'static', keyboard: true, show: true });
-            return new Promise((resolve, reject) => {
-                $(modalId).on('shown.bs.modal', evt => {
-                    resolve();
-                });
+    function generateFullCountryInfoHTML(country, countryES) {
+        return `
+    <div class="googleMapRightControl">
+        <div style="display:flex; flex-direction: column; align-items: center; padding-bottom: 1em;">
+            <img src="${country.countryInfo.flag}" alt="Bandera de ${countryES[country.countryInfo.iso2] || country.country}" style="width: 60%;">
+            <h5 style="margin: 3px 0 0 0;">${countryES[country.countryInfo.iso2] || country.country}</h5>
+        </div>
+        <div style="display:flex; justify-content: center;">
+            <table>
+                <tr>
+                    <td><b>Casos</b></td>
+                    <td>${country.cases.toLocaleString('en')}</td>
+                </tr>
+                <tr>
+                    <td><b>Nuevos hoy</b></td>
+                    <td>${country.todayCases.toLocaleString('en')}</td>
+                </tr>
+                <tr>
+                    <td><b>Muertes</b></td>
+                    <td>${country.deaths.toLocaleString('en')}</td>
+                </tr>
+                <tr>
+                    <td><b>Muertes hoy</b></td>
+                    <td>${country.todayDeaths.toLocaleString('en')}</td>
+                </tr>
+                <tr>
+                    <td><b>Recuperados</b></td>
+                    <td>${country.recovered.toLocaleString('en')}</td>
+                </tr>
+                <tr>
+                    <td><b>Activos</b></td>
+                    <td>${country.active.toLocaleString('en')}</td>
+                </tr>
+                <tr>
+                    <td><b>Críticos</b></td>
+                    <td>${country.critical.toLocaleString('en')}</td>
+                </tr>
+                <tr>
+                    <td><b>Casos/millón</b></td>
+                    <td>${country.casesPerOneMillion.toLocaleString('en')}</td>
+                </tr>
+            </table>
+        </div>
+    </div>
+`;
+    }
+
+    function makeControl(controlDiv, country, countryES) {
+        // Set up the control border.
+        var controlUI = document.createElement('div');
+        controlUI.title = countryES[country.countryInfo.iso2] || country.country;
+        controlUI.className = 'controlUI';
+        controlDiv.appendChild(controlUI);
+
+        // Set up the inner control.
+        var controlText = document.createElement('div');
+        controlText.innerHTML = generateFullCountryInfoHTML(country, countryES);
+        controlText.className = 'controlText';
+        controlUI.appendChild(controlText);
+    }
+
+    function updateInfoCards(globalData, countriesData, countryNamesES) {
+        const tblCountryCases = document.getElementById('countryCasesTable');
+        const divLastUpdated = document.getElementById('lastUpdated');
+        const divGlobalConfirmedCases = document.getElementById('globalConfirmedCases');
+        const divGlobalActiveCases = document.getElementById('globalActiveCases');
+        const divGlobalRecovered = document.getElementById('globalRecovered');
+        const divGlobalDeaths = document.getElementById('globalDeaths');
+
+        countriesData.forEach((country, i) => {
+            const tdPosicion = document.createElement('td');
+            const tdPais = document.createElement('td');
+            const tdCasos = document.createElement('td');
+
+            tdPosicion.textContent = i + 1;
+            tdPais.textContent = countryNamesES[country.countryInfo.iso2] || country.country;
+
+            const spanCasos = document.createElement('span');
+            spanCasos.textContent = country.cases.toLocaleString('en');
+            spanCasos.className = 'badge badge-pill badge-warning';
+
+            tdCasos.appendChild(spanCasos);
+
+            const tr = document.createElement('tr');
+            tr.id = country.country;
+            tr.appendChild(tdPosicion);
+            tr.appendChild(tdPais);
+            tr.appendChild(tdCasos);
+
+            tr.addEventListener('click', evt => {
+                const country = evt.currentTarget.id;
+                closeAllInfoWindows();
+                google.maps.event.trigger(markers[country], 'click');
             });
-        }
 
-        async function hideModal(modalId) {
-            $(modalId).modal('hide');
-            return new Promise((resolve, reject) => {
-                $(modalId).on('hidden.bs.modal', evt => {
-                    resolve();
-                });
+            tblCountryCases.appendChild(tr);
+        });
+
+        divLastUpdated.textContent = new Date(globalData.updated).toLocaleString('es-us', { hour12: true });
+        divGlobalConfirmedCases.textContent = globalData.cases.toLocaleString('en');
+        divGlobalActiveCases.textContent = globalData.active.toLocaleString('en');
+        divGlobalRecovered.textContent = globalData.recovered.toLocaleString('en');
+        divGlobalDeaths.textContent = globalData.deaths.toLocaleString('en');
+    }
+
+    function addCountryMarkers(countriesData, countryNamesES, map) {
+        const icon = {
+            url: 'https://image.flaticon.com/icons/png/128/2659/2659980.png',
+            scaledSize: new google.maps.Size(24, 24),
+            origin: new google.maps.Point(0, 0)
+        };
+
+        for (const country of countriesData) {
+            const info = generateCountryInfoHTML(country, countryNamesES);
+            const infoWindow = new google.maps.InfoWindow({
+                content: info
             });
+
+            const marker = new google.maps.Marker({
+                map: map,
+                icon: icon,
+                position: new google.maps.LatLng(country.countryInfo.lat, country.countryInfo.long),
+                title: `${countryNamesES[country.countryInfo.iso2] || country.country}`
+            });
+
+            markers[country.country] = marker;
+            marker.addListener('click', () => {
+                closeAllInfoWindows();
+                infoWindow.open(map, marker);
+                var divName = document.createElement('div');
+                new makeControl(divName, country, countryNamesES);
+
+                let fullInfoWindow = setInterval(() => {
+                    if (!infoWindow.getMap()) {
+                        clearInterval(fullInfoWindow);
+                        map.controls[google.maps.ControlPosition.RIGHT_CENTER].pop();
+                    }
+                    else if (map.controls[google.maps.ControlPosition.RIGHT_CENTER].length === 0) {
+                        map.controls[google.maps.ControlPosition.RIGHT_CENTER].push(divName);
+                    }
+                }, 100);
+            });
+
+            objInfoWindows[country.country] = infoWindow;
         }
-    </script>
+    }
 
-    <script defer
-        src="https://maps.googleapis.com/maps/api/js?key=AIzaSyADjOfdGIg-7JiqjoTstMN9el4g-nLhxxA&callback=initMap"></script>
+    function cacheAPIData(key, jsonData) {
+        localStorage.setItem(key, JSON.stringify(jsonData));
+    }
 
-    <title>Mapa de casos y estadísticas COVID-19</title>
+    function retrieveCachedAPIData(key) {
+        return JSON.parse(localStorage.getItem(key));
+    }
+
+    function closeAllInfoWindows() {
+        for (const infoWinKey in objInfoWindows) {
+            objInfoWindows[infoWinKey].close();
+        }
+    }
+
+    async function showModal(modalId) {
+        $(modalId).modal({ backdrop: 'static', keyboard: true, show: true });
+        return new Promise((resolve, reject) => {
+            $(modalId).on('shown.bs.modal', evt => {
+                resolve();
+            });
+        });
+    }
+
+    async function hideModal(modalId) {
+        $(modalId).modal('hide');
+        return new Promise((resolve, reject) => {
+            $(modalId).on('hidden.bs.modal', evt => {
+                resolve();
+            });
+        });
+    }
+</script>
+
+<script defer
+    src="https://maps.googleapis.com/maps/api/js?key=AIzaSyADjOfdGIg-7JiqjoTstMN9el4g-nLhxxA&callback=initMap"></script>
+
+<title>Mapa de casos y estadísticas COVID-19</title>
 </head>
 
 <body>
-    <div class="container-fluid" id="first-row">
-        <div class="row">
-            <div class="col-12 col-lg-9">
-                <div id="map"></div>
-            </div>
-            <div class="col-12 col-lg-3 mt-3">
-                <div class="card text-center">
-                    <div class="card-header font-weight-bold text text-uppercase">Casos confirmados por país</div>
-                    <div class="card-body d-flex justify-content-center">
-                        <table id="countryCasesTable">
-                            <thead>
-                                <tr>
-                                    <th>Pos.</th>
-                                    <th>País</th>
-                                    <th>Casos</th>
-                                </tr>
-                            </thead>
-                        </table>
-                    </div>
+<div class="container-fluid" id="first-row">
+    <div class="row">
+        <div class="col-12 col-lg-9">
+            <div id="map"></div>
+        </div>
+        <div class="col-12 col-lg-3 mt-3">
+            <div class="card text-center">
+                <div class="card-header font-weight-bold text text-uppercase">Casos confirmados por país</div>
+                <div class="card-body d-flex justify-content-center">
+                    <table id="countryCasesTable">
+                        <thead>
+                            <tr>
+                                <th>Pos.</th>
+                                <th>País</th>
+                                <th>Casos</th>
+                            </tr>
+                        </thead>
+                    </table>
                 </div>
             </div>
         </div>
     </div>
+</div>
 
-    <div class="container-fluid mt-3" id="global-stats">
-        <div class="card-deck">
-            <div class="card text-center">
-                <div class="card-header font-weight-bold text-uppercase">Última actualización</div>
-                <div class="card-body d-flex justify-content-center align-items-center">
-                    <span id="lastUpdated"></span>
-                </div>
+<div class="container-fluid mt-3" id="global-stats">
+    <div class="card-deck">
+        <div class="card text-center">
+            <div class="card-header font-weight-bold text-uppercase">Última actualización</div>
+            <div class="card-body d-flex justify-content-center align-items-center">
+                <span id="lastUpdated"></span>
             </div>
-            <div class="card text-center">
-                <div class="card-header font-weight-bold text-uppercase">Casos confirmados</div>
-                <div class="card-body text-secondary d-flex justify-content-center align-items-center">
-                    <span id="globalConfirmedCases"></span>
-                </div>
+        </div>
+        <div class="card text-center">
+            <div class="card-header font-weight-bold text-uppercase">Casos confirmados</div>
+            <div class="card-body text-secondary d-flex justify-content-center align-items-center">
+                <span id="globalConfirmedCases"></span>
             </div>
-            <div class="card text-center">
-                <div class="card-header font-weight-bold text-uppercase">Casos activos</div>
-                <div class="card-body text-warning d-flex justify-content-center align-items-center">
-                    <span id="globalActiveCases"></span>
-                </div>
+        </div>
+        <div class="card text-center">
+            <div class="card-header font-weight-bold text-uppercase">Casos activos</div>
+            <div class="card-body text-warning d-flex justify-content-center align-items-center">
+                <span id="globalActiveCases"></span>
             </div>
-            <div class="card text-center">
-                <div class="card-header font-weight-bold text-uppercase">Casos cerrados</div>
-                <div id="recovered-deaths" class="card-body d-flex justify-content-center">
-                    <div class="row">
-                        <div class="col">
-                            <h6>Recuperados</h6>
-                            <div>
-                                <span id="globalRecovered" class="text-success"></span>
-                            </div>
-                        </div>
-                        <div class="col">
-                            <h6>Muertes</h6>
-                            <div>
-                                <span id="globalDeaths" class="text-danger"></span>
-                            </div>
+        </div>
+        <div class="card text-center">
+            <div class="card-header font-weight-bold text-uppercase">Casos cerrados</div>
+            <div id="recovered-deaths" class="card-body d-flex justify-content-center">
+                <div class="row">
+                    <div class="col">
+                        <h6>Recuperados</h6>
+                        <div>
+                            <span id="globalRecovered" class="text-success"></span>
                         </div>
                     </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <footer class="container-fluid mt-4">
-        <div class="row border bg-light d-flex justify-content-center">
-            <div class="col d-flex justify-content-around align-items-center p-2">
-                <a href="#" data-toggle="modal" data-target="#modalAbout">Acerca de</a>
-                <a href="#" data-toggle="modal" data-target="#modalSource">Fuente</a>
-                <a href="#" data-toggle="modal" data-target="#modalCredits">Créditos</a>
-            </div>
-        </div>
-    </footer>
-
-    <!-- Modal Loading -->
-    <div id="modalLoading" class="modal fade" tabindex="-1">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-body text-center">
-                    <div class="lds-ellipsis">
-                        <div></div>
-                        <div></div>
-                        <div></div>
-                        <div></div>
-                    </div>
-                    <h5 class="modal-title">Obteniendo datos...</h5>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Modal About -->
-    <div class="modal fade" id="modalAbout" tabindex="-1">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <div class="d-flex align-items-center">
-                        <i class="fas fa-info-circle"></i>
-                        <h5 class="modal-title">Acerca de</h5>
-                    </div>
-                    <button type="button" class="close" data-dismiss="modal">
-                        <span>&times;</span>
-                    </button>
-                </div>
-                <div class="modal-body text-justify">
-                    <p>
-                        Este mapa fue creado por estudiantes de 6° semestre de la carrera de Ingeniería de Software y
-                        Sistemas Computacionales de la Universidad De La Salle Bajío, con la finalidad de informar a la
-                        comunidad sobre la expansión del COVID-19 a nivel mundial y por país.
-                    </p>
-
-                    <a class="btn btn-primary" data-toggle="collapse" href="#collapseExample">Info. para
-                        desarrolladores</a>
-                    <div class="collapse" id="collapseExample">
-                        <div class="card card-body">
-                            <ul class="list-group">
-                                <li class="list-group-item">
-                                    <span>
-                                        El código fuente del sitio puede ser consultado <a
-                                            href="https://github.com/nibble-4bits/COVID-19-Map">aquí</a>.
-                                    </span>
-                                </li>
-                                <li class="list-group-item">
-                                    <span>
-                                        La obtención de los datos se hace a través de esta <a
-                                            href="https://corona.lmao.ninja/" target="_blank">API</a>.
-                                    </span>
-                                </li>
-                            </ul>
+                    <div class="col">
+                        <h6>Muertes</h6>
+                        <div>
+                            <span id="globalDeaths" class="text-danger"></span>
                         </div>
                     </div>
                 </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-primary" data-dismiss="modal">Cerrar</button>
-                </div>
             </div>
         </div>
     </div>
+</div>
 
-    <!-- Modal Source -->
-    <div class="modal fade" id="modalSource" tabindex="-1">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <div class="d-flex align-items-center">
-                        <i class="fas fa-search"></i>
-                        <h5 class="modal-title">Fuente</h5>
-                    </div>
-                    <button type="button" class="close" data-dismiss="modal">
-                        <span>&times;</span>
-                    </button>
-                </div>
-                <div class="modal-body text-center">
-                    Todos los datos son obtenidos de <a href="https://www.worldometers.info/coronavirus/"
-                        target="_blank">worldometers.info/coronavirus</a>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-primary" data-dismiss="modal">Cerrar</button>
-                </div>
-            </div>
+<footer class="container-fluid mt-4">
+    <div class="row border bg-light d-flex justify-content-center">
+        <div class="col d-flex justify-content-around align-items-center p-2">
+            <a href="#" data-toggle="modal" data-target="#modalAbout">Acerca de</a>
+            <a href="#" data-toggle="modal" data-target="#modalSource">Fuente</a>
+            <a href="#" data-toggle="modal" data-target="#modalCredits">Créditos</a>
         </div>
     </div>
+</footer>
 
-    <!-- Modal Credits -->
-    <div class="modal fade" id="modalCredits" tabindex="-1">
-        <div class="modal-dialog modal-dialog-centered">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <div class="d-flex align-items-center">
-                        <i class="fas fa-hands-helping"></i>
-                        <h5 class="modal-title">Créditos</h5>
-                    </div>
-                    <button type="button" class="close" data-dismiss="modal">
-                        <span>&times;</span>
-                    </button>
+<!-- Modal Loading -->
+<div id="modalLoading" class="modal fade" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-body text-center">
+                <div class="lds-ellipsis">
+                    <div></div>
+                    <div></div>
+                    <div></div>
+                    <div></div>
                 </div>
-                <div class="modal-body text-center">
-                    <p><b>Crédito para todos los estudiantes de 6° semestre de Ingeniería de Software y Sistemas
-                            Computacionales:</b></p>
-                    <ul class="list-group">
-                        <li class="list-group-item">Luis De Anda</li>
-                        <li class="list-group-item">Luis Zanella</li>
-                        <li class="list-group-item">Andrei Arias</li>
-                        <li class="list-group-item">Sebastián Gutiérrez</li>
-                        <li class="list-group-item">Jorge Rangel</li>
-                        <li class="list-group-item">Kevin Acosta</li>
-                        <li class="list-group-item">Ronaldo Barrientos</li>
-                        <li class="list-group-item">Eduardo Bedolla</li>
-                        <li class="list-group-item">Gerardo Cabrera</li>
-                        <li class="list-group-item">Juan de Dios Cruz</li>
-                        <li class="list-group-item">Daniel Cuanalo</li>
-                        <li class="list-group-item">Diego De la Vega</li>
-                        <li class="list-group-item">Rodrigo De León</li>
-                        <li class="list-group-item">Diego Duarte</li>
-                        <li class="list-group-item">Sofía Enríquez</li>
-                        <li class="list-group-item">Mauricio García</li>
-                        <li class="list-group-item">Josué Romo</li>
-                        <li class="list-group-item">José Pablo Gutiérrez</li>
-                        <li class="list-group-item">Marco Lezcano</li>
-                        <li class="list-group-item">Karol Quijas</li>
-                        <li class="list-group-item">Leonardo Medina</li>
-                        <li class="list-group-item">Jonathan Muñoz</li>
-                        <li class="list-group-item">Jorge Padilla</li>
-                        <li class="list-group-item">Juan Reyes</li>
-                        <li class="list-group-item">José Luis Rodríguez</li>
-                        <li class="list-group-item">Byron Rodríguez</li>
-                        <li class="list-group-item">Luis Daniel Torres</li>
-                        <li class="list-group-item">Nicolás de Jesús Ramírez</li>
-                        <li class="list-group-item">Jean Carlo Vaca</li>
-                        <li class="list-group-item">Gerardo Vallejo</li>
-                        <li class="list-group-item">Axel Visoso</li>
-                        <li class="list-group-item">José Carlos Zamora</li>
-                    </ul>
-                </div>
-                <div class="modal-footer">
-                    <button type="button" class="btn btn-primary" data-dismiss="modal">Cerrar</button>
-                </div>
+                <h5 class="modal-title">Obteniendo datos...</h5>
             </div>
         </div>
     </div>
+</div>
 
-    <!-- Modal Error -->
-    <div id="modalError" class="modal fade">
-        <div class="modal-dialog modal-confirm">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <div class="icon-box">
-                        <i class="material-icons">&#xE5CD;</i>
+<!-- Modal About -->
+<div class="modal fade" id="modalAbout" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="d-flex align-items-center">
+                    <i class="fas fa-info-circle"></i>
+                    <h5 class="modal-title">Acerca de</h5>
+                </div>
+                <button type="button" class="close" data-dismiss="modal">
+                    <span>&times;</span>
+                </button>
+            </div>
+            <div class="modal-body text-justify">
+                <p>
+                    Este mapa fue creado por estudiantes de 6° semestre de la carrera de Ingeniería de Software y
+                    Sistemas Computacionales de la Universidad De La Salle Bajío, con la finalidad de informar a la
+                    comunidad sobre la expansión del COVID-19 a nivel mundial y por país.
+                </p>
+
+                <a class="btn btn-primary" data-toggle="collapse" href="#collapseExample">Info. para
+                    desarrolladores</a>
+                <div class="collapse" id="collapseExample">
+                    <div class="card card-body">
+                        <ul class="list-group">
+                            <li class="list-group-item">
+                                <span>
+                                    El código fuente del sitio puede ser consultado <a
+                                        href="https://github.com/nibble-4bits/COVID-19-Map">aquí</a>.
+                                </span>
+                            </li>
+                            <li class="list-group-item">
+                                <span>
+                                    La obtención de los datos se hace a través de esta <a
+                                        href="https://corona.lmao.ninja/" target="_blank">API</a>.
+                                </span>
+                            </li>
+                        </ul>
                     </div>
-                    <h4 class="modal-title">¡Lo sentimos!</h4>
                 </div>
-                <div class="modal-body">
-                    <p class="text-center">Ha ocurrido un error al intentar obtener los datos más recientes. Por favor
-                        inténtelo de nuevo más tarde.</p>
-                </div>
-                <div class="modal-footer">
-                    <button class="btn btn-danger btn-block" data-dismiss="modal">OK</button>
-                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" data-dismiss="modal">Cerrar</button>
             </div>
         </div>
     </div>
+</div>
+
+<!-- Modal Source -->
+<div class="modal fade" id="modalSource" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="d-flex align-items-center">
+                    <i class="fas fa-search"></i>
+                    <h5 class="modal-title">Fuente</h5>
+                </div>
+                <button type="button" class="close" data-dismiss="modal">
+                    <span>&times;</span>
+                </button>
+            </div>
+            <div class="modal-body text-center">
+                Todos los datos son obtenidos de <a href="https://www.worldometers.info/coronavirus/"
+                    target="_blank">worldometers.info/coronavirus</a>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" data-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Credits -->
+<div class="modal fade" id="modalCredits" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="d-flex align-items-center">
+                    <i class="fas fa-hands-helping"></i>
+                    <h5 class="modal-title">Créditos</h5>
+                </div>
+                <button type="button" class="close" data-dismiss="modal">
+                    <span>&times;</span>
+                </button>
+            </div>
+            <div class="modal-body text-center">
+                <p><b>Crédito para todos los estudiantes de 6° semestre de Ingeniería de Software y Sistemas
+                        Computacionales:</b></p>
+                <ul class="list-group">
+                    <li class="list-group-item">Luis De Anda</li>
+                    <li class="list-group-item">Luis Zanella</li>
+                    <li class="list-group-item">Andrei Arias</li>
+                    <li class="list-group-item">Sebastián Gutiérrez</li>
+                    <li class="list-group-item">Jorge Rangel</li>
+                    <li class="list-group-item">Kevin Acosta</li>
+                    <li class="list-group-item">Ronaldo Barrientos</li>
+                    <li class="list-group-item">Eduardo Bedolla</li>
+                    <li class="list-group-item">Gerardo Cabrera</li>
+                    <li class="list-group-item">Juan de Dios Cruz</li>
+                    <li class="list-group-item">Daniel Cuanalo</li>
+                    <li class="list-group-item">Diego De la Vega</li>
+                    <li class="list-group-item">Rodrigo De León</li>
+                    <li class="list-group-item">Diego Duarte</li>
+                    <li class="list-group-item">Sofía Enríquez</li>
+                    <li class="list-group-item">Mauricio García</li>
+                    <li class="list-group-item">Josué Romo</li>
+                    <li class="list-group-item">José Pablo Gutiérrez</li>
+                    <li class="list-group-item">Marco Lezcano</li>
+                    <li class="list-group-item">Karol Quijas</li>
+                    <li class="list-group-item">Leonardo Medina</li>
+                    <li class="list-group-item">Jonathan Muñoz</li>
+                    <li class="list-group-item">Jorge Padilla</li>
+                    <li class="list-group-item">Juan Reyes</li>
+                    <li class="list-group-item">José Luis Rodríguez</li>
+                    <li class="list-group-item">Byron Rodríguez</li>
+                    <li class="list-group-item">Luis Daniel Torres</li>
+                    <li class="list-group-item">Nicolás de Jesús Ramírez</li>
+                    <li class="list-group-item">Jean Carlo Vaca</li>
+                    <li class="list-group-item">Gerardo Vallejo</li>
+                    <li class="list-group-item">Axel Visoso</li>
+                    <li class="list-group-item">José Carlos Zamora</li>
+                </ul>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-primary" data-dismiss="modal">Cerrar</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal Error -->
+<div id="modalError" class="modal fade">
+    <div class="modal-dialog modal-confirm">
+        <div class="modal-content">
+            <div class="modal-header">
+                <div class="icon-box">
+                    <i class="material-icons">&#xE5CD;</i>
+                </div>
+                <h4 class="modal-title">¡Lo sentimos!</h4>
+            </div>
+            <div class="modal-body">
+                <p class="text-center">Ha ocurrido un error al intentar obtener los datos más recientes. Por favor
+                    inténtelo de nuevo más tarde..</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-danger btn-block" data-dismiss="modal">OK</button>
+            </div>
+        </div>
+    </div>
+</div>
 
 </body>
 
